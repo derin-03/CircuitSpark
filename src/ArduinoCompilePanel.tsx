@@ -1,5 +1,5 @@
-
 import { useEffect, useRef, useState } from 'react';
+import { API_BASE_URL } from './api';
 
 type ArduinoCompilePanelProps = {
   projectId: string;
@@ -19,8 +19,7 @@ type SavedResult = {
   result: CompileResponse;
 };
 
-const ENDPOINT =
-  'http://127.0.0.1:3001/api/compile/arduino';
+const ENDPOINT = `${API_BASE_URL}/api/compile/arduino`;
 
 export default function ArduinoCompilePanel({
   projectId,

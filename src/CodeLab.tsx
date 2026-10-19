@@ -6,6 +6,7 @@ import { cpp } from '@codemirror/lang-cpp';
 import { python } from '@codemirror/lang-python';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { API_BASE_URL } from './api';
 
 type Language = 'arduino' | 'python';
 type TutorView = 'welcome' | 'conversation';
@@ -48,11 +49,11 @@ const PROJECTS_PANEL_KEY =
 const TUTOR_CHATS_KEY =
   'circuitspark-codelab-tutor-chats';
 
-const CHAT_ENDPOINT = 'http://127.0.0.1:3001/api/chat';
+const CHAT_ENDPOINT = `${API_BASE_URL}/api/chat`;
 const COMPILE_ENDPOINT =
-  'http://127.0.0.1:3001/api/compile/arduino';
+  `${API_BASE_URL}/api/compile/arduino`;
 const PYTHON_ENDPOINT =
-  'http://127.0.0.1:3001/api/run/python';
+  `${API_BASE_URL}/api/run/python`;
 
 const extensions = {
   arduino: [cpp()],
