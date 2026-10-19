@@ -5,7 +5,17 @@ const arduinoCompileRouter = require("./arduinoCompile");
 const pythonExecuteRouter = require("./pythonExecute");
 
 const app = express();
-const PORT = 3001;
+
+// Use Render's assigned port in production and 3001 locally.
+const PORT = Number(process.env.PORT) || 3001;
+
+// Render needs the server accessible within its container.
+// Keep local development bound to this computer only.
+const HOST =
+  process.env.RENDER === "true" ||
+  process.env.NODE_ENV === "production"
+    ? "0.0.0.0"
+    : "127.0.0.1";
 
 // Ollama Cloud settings
 const OLLAMA_URL = "https://ollama.com/api/chat";
@@ -516,7 +526,6 @@ When a learner demonstrates correct reasoning:
 
 - Recognize what they understood correctly.
 - Correct only meaningful inaccuracies.
-- Avoid repeating questions they already answered.
 - Build directly on their demonstrated understanding.
 - Move toward the next relevant concept or action.
 
@@ -621,9 +630,6 @@ For guided practical activities:
 A single task may include a few small actions,
 such as opening a simulator and placing a board.
 
-Do not introduce multiple unrelated concepts
-or components before they are needed.
-
 For example, when a beginner wants to learn
 Arduino without hardware:
 
@@ -664,7 +670,8 @@ Keep responses appropriate to the learner's
 question and experience level.
 `;
 
-// Allow communication with the React website
+// Allow communication with the local React website.
+// We'll configure the public frontend address next.
 app.use(
   cors({
     origin: "http://localhost:5173",
@@ -673,11 +680,16 @@ app.use(
 
 app.use(express.json({ limit: "20kb" }));
 
-// Arduino compilation endpoint
-app.use("/api", arduinoCompileRouter);
-
-// Python execution endpoint (local development only)
-app.use("/api", pythonExecuteRouter);
+// Code execution is disabled by default.
+// Only allow trusted local development, never Render or production.
+if (
+  process.env.CIRCUITSPARK_LOCAL_EXECUTION === "enabled" &&
+  process.env.NODE_ENV !== "production" &&
+  process.env.RENDER !== "true"
+) {
+  app.use("/api", arduinoCompileRouter);
+  app.use("/api", pythonExecuteRouter);
+}
 
 // Backend test route
 app.get("/", (req, res) => {
@@ -737,16 +749,11 @@ app.post("/api/chat", async (req, res) => {
 
     // Prepare the messages for Ollama Cloud
     const conversationMessages = [
-      // CircuitSpark's teaching instructions
       {
         role: "system",
         content: SYSTEM_PROMPT,
       },
-
-      // Previous conversation messages
       ...recentHistory,
-
-      // The learner's latest question
       {
         role: "user",
         content: message.trim(),
@@ -848,7 +855,6 @@ app.post("/api/chat", async (req, res) => {
     // Finish streaming
     res.end();
   } catch (error) {
-    // Log the complete error, including its network cause.
     console.error("CircuitSpark AI error:", error);
 
     if (res.headersSent) {
@@ -863,8 +869,8 @@ app.post("/api/chat", async (req, res) => {
 });
 
 // Start the server
-app.listen(PORT, "127.0.0.1", () => {
+app.listen(PORT, HOST, () => {
   console.log(
-    `CircuitSpark server running at http://127.0.0.1:${PORT}`
+    `CircuitSpark server listening on ${HOST}:${PORT}`
   );
 });
