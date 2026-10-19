@@ -1,21 +1,21 @@
 
 const express = require("express");
 const cors = require("cors");
-const arduinoCompileRouter = require("./arduinoCompile");
-const pythonExecuteRouter = require("./pythonExecute");
 
 const app = express();
 
-// Use Render's assigned port in production and 3001 locally.
-const PORT = Number(process.env.PORT) || 3001;
-
-// Render needs the server accessible within its container.
-// Keep local development bound to this computer only.
-const HOST =
+// Render supplies PORT and sets RENDER=true.
+const IS_PRODUCTION =
   process.env.RENDER === "true" ||
-  process.env.NODE_ENV === "production"
-    ? "0.0.0.0"
-    : "127.0.0.1";
+  process.env.NODE_ENV === "production";
+
+const PORT = Number(process.env.PORT) || 3001;
+const HOST = IS_PRODUCTION ? "0.0.0.0" : "127.0.0.1";
+
+// On Render, trust the immediately preceding reverse proxy for req.ip.
+if (process.env.RENDER === "true") {
+  app.set("trust proxy", 1);
+}
 
 // Ollama Cloud settings
 const OLLAMA_URL = "https://ollama.com/api/chat";
@@ -630,6 +630,9 @@ For guided practical activities:
 A single task may include a few small actions,
 such as opening a simulator and placing a board.
 
+Do not introduce multiple unrelated concepts
+or components before they are needed.
+
 For example, when a beginner wants to learn
 Arduino without hardware:
 
@@ -670,25 +673,111 @@ Keep responses appropriate to the learner's
 question and experience level.
 `;
 
-// Allow communication with the local React website.
-// We'll configure the public frontend address next.
+// Only approved browser origins may read the API responses.
+// Set FRONTEND_URL in Render to the final Cloudflare Pages URL.
+// CORS is not authentication; server-side limits are added below.
+const allowedOrigins = [
+  ...(!IS_PRODUCTION
+    ? ["http://localhost:5173", "http://127.0.0.1:5173"]
+    : []),
+  ...(process.env.FRONTEND_URL
+    ? [process.env.FRONTEND_URL.trim().replace(/\/+$/, "")]
+    : []),
+];
+
 app.use(
   cors({
-    origin: "http://localhost:5173",
+    origin(origin, callback) {
+      // Non-browser requests have no Origin header.
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(null, false);
+    },
   })
 );
 
 app.use(express.json({ limit: "20kb" }));
 
-// Code execution is disabled by default.
-// Only allow trusted local development, never Render or production.
+// Local code execution is NEVER mounted in production.
+// The Arduino and Python routes must use a separate sandboxed
+// service before they can safely be exposed to website visitors.
 if (
-  process.env.CIRCUITSPARK_LOCAL_EXECUTION === "enabled" &&
-  process.env.NODE_ENV !== "production" &&
-  process.env.RENDER !== "true"
+  !IS_PRODUCTION &&
+  process.env.CIRCUITSPARK_LOCAL_EXECUTION === "enabled"
 ) {
+  const arduinoCompileRouter = require("./arduinoCompile");
+  const pythonExecuteRouter = require("./pythonExecute");
+
   app.use("/api", arduinoCompileRouter);
   app.use("/api", pythonExecuteRouter);
+}
+
+// Simple in-memory limits protect the Ollama Cloud allowance.
+// They reset on a server restart and are NOT billing guarantees.
+const MAX_CHATS_PER_HOUR = 60; // All users combined
+const MAX_CHATS_PER_IP_PER_HOUR = 12;
+const MAX_CONCURRENT_CHATS = 2;
+
+const HOUR_MS = 60 * 60 * 1000;
+
+let usageHour = Math.floor(Date.now() / HOUR_MS);
+let totalChatsThisHour = 0;
+let activeChats = 0;
+
+const chatsByIp = new Map();
+
+function limitChatUsage(req, res, next) {
+  const hour = Math.floor(Date.now() / HOUR_MS);
+
+  if (hour !== usageHour) {
+    usageHour = hour;
+    totalChatsThisHour = 0;
+    chatsByIp.clear();
+  }
+
+  const clientIp =
+    req.ip || req.socket.remoteAddress || "unknown";
+
+  const usedByClient = chatsByIp.get(clientIp) || 0;
+
+  if (
+    totalChatsThisHour >= MAX_CHATS_PER_HOUR ||
+    usedByClient >= MAX_CHATS_PER_IP_PER_HOUR
+  ) {
+    res.setHeader(
+      "Retry-After",
+      String(
+        Math.ceil(
+          ((hour + 1) * HOUR_MS - Date.now()) / 1000
+        )
+      )
+    );
+
+    return res.status(429).json({
+      error:
+        "CircuitSpark has reached its temporary AI usage limit. Please try again later.",
+    });
+  }
+
+  if (activeChats >= MAX_CONCURRENT_CHATS) {
+    res.setHeader("Retry-After", "15");
+
+    return res.status(429).json({
+      error:
+        "CircuitSpark is helping other learners right now. Please try again shortly.",
+    });
+  }
+
+  totalChatsThisHour += 1;
+  chatsByIp.set(clientIp, usedByClient + 1);
+  activeChats += 1;
+
+  res.once("close", () => {
+    activeChats = Math.max(0, activeChats - 1);
+  });
+
+  next();
 }
 
 // Backend test route
@@ -700,7 +789,7 @@ app.get("/", (req, res) => {
 });
 
 // AI chat endpoint
-app.post("/api/chat", async (req, res) => {
+app.post("/api/chat", limitChatUsage, async (req, res) => {
   try {
     // Receive the latest question and conversation history
     const { message, history = [] } = req.body ?? {};
@@ -712,6 +801,13 @@ app.post("/api/chat", async (req, res) => {
     ) {
       return res.status(400).json({
         error: "Please enter a question.",
+      });
+    }
+
+    if (message.length > 4000) {
+      return res.status(400).json({
+        error:
+          "Your question is too long. Please keep it under 4,000 characters.",
       });
     }
 
@@ -760,100 +856,123 @@ app.post("/api/chat", async (req, res) => {
       },
     ];
 
-    // Ask Ollama Cloud
-    const response = await fetch(OLLAMA_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        messages: conversationMessages,
-        stream: true,
-      }),
-    });
+    // Stop cloud requests if they run too long
+    // or the learner disconnects.
+    const controller = new AbortController();
 
-    // Handle API errors before starting the stream
-    if (!response.ok) {
-      console.error(
-        "Ollama Cloud returned status:",
-        response.status
-      );
-
-      if (response.status === 429) {
-        return res.status(429).json({
-          error:
-            "CircuitSpark is temporarily busy or has reached a usage limit.",
-        });
-      }
-
-      throw new Error(
-        `Ollama Cloud returned status ${response.status}`
-      );
-    }
-
-    if (!response.body) {
-      throw new Error(
-        "No response stream received."
-      );
-    }
-
-    // Send text progressively to React
-    res.setHeader(
-      "Content-Type",
-      "text/plain; charset=utf-8"
+    const timeout = setTimeout(
+      () => controller.abort(),
+      90000
     );
 
-    res.setHeader(
-      "Cache-Control",
-      "no-cache, no-transform"
-    );
-
-    res.flushHeaders();
-
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    // Process one line of Ollama's streaming response
-    function processLine(line) {
-      if (!line.trim()) return;
-
-      const data = JSON.parse(line);
-
-      if (data.error) {
-        throw new Error(data.error);
+    const onDisconnect = () => {
+      if (!res.writableEnded) {
+        controller.abort();
       }
+    };
 
-      // Send only learner-facing content
-      if (data.message?.content) {
-        res.write(data.message.content);
-      }
-    }
+    res.once("close", onDisconnect);
 
-    // Read the cloud model's streaming response
-    for await (const chunk of response.body) {
-      buffer += decoder.decode(chunk, {
-        stream: true,
+    try {
+      // Ask Ollama Cloud
+      const response = await fetch(OLLAMA_URL, {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          messages: conversationMessages,
+          stream: true,
+        }),
       });
 
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
+      // Handle API errors before starting the stream
+      if (!response.ok) {
+        console.error(
+          "Ollama Cloud returned status:",
+          response.status
+        );
 
-      for (const line of lines) {
-        processLine(line);
+        if (response.status === 429) {
+          return res.status(429).json({
+            error:
+              "CircuitSpark is temporarily busy or has reached a usage limit.",
+          });
+        }
+
+        throw new Error(
+          `Ollama Cloud returned status ${response.status}`
+        );
       }
+
+      if (!response.body) {
+        throw new Error(
+          "No response stream received."
+        );
+      }
+
+      // Send text progressively to React
+      res.setHeader(
+        "Content-Type",
+        "text/plain; charset=utf-8"
+      );
+
+      res.setHeader(
+        "Cache-Control",
+        "no-cache, no-transform"
+      );
+
+      res.flushHeaders();
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      // Process one line of Ollama's streaming response
+      function processLine(line) {
+        if (!line.trim()) return;
+
+        const data = JSON.parse(line);
+
+        if (data.error) {
+          throw new Error(data.error);
+        }
+
+        // Send only learner-facing content
+        if (data.message?.content) {
+          res.write(data.message.content);
+        }
+      }
+
+      // Read the cloud model's streaming response
+      for await (const chunk of response.body) {
+        buffer += decoder.decode(chunk, {
+          stream: true,
+        });
+
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          processLine(line);
+        }
+      }
+
+      // Process remaining response data
+      buffer += decoder.decode();
+
+      if (buffer.trim()) {
+        processLine(buffer);
+      }
+
+      // Finish streaming
+      res.end();
+    } finally {
+      clearTimeout(timeout);
+      res.off("close", onDisconnect);
     }
-
-    // Process remaining response data
-    buffer += decoder.decode();
-
-    if (buffer.trim()) {
-      processLine(buffer);
-    }
-
-    // Finish streaming
-    res.end();
   } catch (error) {
     console.error("CircuitSpark AI error:", error);
 
