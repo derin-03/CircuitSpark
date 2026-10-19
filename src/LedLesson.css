@@ -1,0 +1,541 @@
+
+.led-lesson {
+  max-width: 1000px;
+  margin: 32px auto;
+  padding: 48px 24px;
+  color: #17324d;
+}
+
+.led-lesson-header {
+  margin-bottom: 28px;
+}
+
+.lesson-tag {
+  color: #1685c7;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+}
+
+.led-lesson-header h2 {
+  margin: 12px 0;
+  font-size: clamp(28px, 4vw, 40px);
+}
+
+.led-lesson-header p,
+.led-controls > p {
+  color: #60758a;
+  line-height: 1.7;
+}
+
+/* ========================================
+   CONCEPT CARDS
+======================================== */
+
+.concept-card,
+.knowledge-check {
+  margin: 28px 0;
+  padding: 28px;
+  border: 1px solid #dcecf8;
+  border-radius: 20px;
+  background: #ffffff;
+  box-shadow: 0 8px 28px rgba(42, 112, 165, 0.06);
+}
+
+.concept-number {
+  display: inline-block;
+  margin-bottom: 12px;
+  color: #287bb5;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.concept-card h3,
+.knowledge-check h3 {
+  margin: 0 0 12px;
+  color: #173c59;
+  font-size: 1.4rem;
+}
+
+.concept-card > p,
+.knowledge-check > p {
+  color: #587084;
+  line-height: 1.7;
+}
+
+.concept-note {
+  margin-top: 22px;
+  padding: 14px 16px;
+  border-left: 3px solid #64b8ed;
+  border-radius: 0 10px 10px 0;
+  background: #f3f9fe;
+  color: #496a82;
+  font-size: 0.9rem;
+  line-height: 1.65;
+}
+
+/* ========================================
+   LED CONCEPTS
+======================================== */
+
+.led-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 24px;
+}
+
+.led-fact {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 14px;
+  background: #f1f8fd;
+}
+
+.fact-symbol {
+  display: grid;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 10px;
+  background: #d9efff;
+  color: #176ca5;
+  font-weight: 800;
+}
+
+.led-fact strong {
+  color: #173c59;
+}
+
+.led-fact p,
+.code-explanation p {
+  margin: 6px 0 0;
+  color: #587084;
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+
+/* ========================================
+   KNOWLEDGE CHECK
+======================================== */
+
+.answer-options {
+  display: grid;
+  gap: 10px;
+  margin: 20px 0;
+}
+
+.answer-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 15px;
+  border: 1px solid #dce8f1;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #294b63;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.answer-option:hover,
+.answer-option.answer-selected {
+  border-color: #4aabe8;
+  background: #f0f8fe;
+}
+
+.answer-radio {
+  color: #2587c5;
+  font-size: 1.1rem;
+}
+
+.check-answer-button {
+  padding: 12px 20px;
+  border: 0;
+  border-radius: 10px;
+  background: #2587c5;
+  color: #ffffff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.check-answer-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.answer-feedback {
+  margin-top: 18px;
+  padding: 16px;
+  border-radius: 12px;
+  line-height: 1.6;
+}
+
+.answer-feedback p {
+  margin-bottom: 0;
+}
+
+.feedback-correct {
+  background: #eaf8ef;
+  color: #21663a;
+}
+
+.feedback-try-again {
+  background: #fff5e7;
+  color: #80521b;
+}
+
+/* ========================================
+   ARDUINO BOARD EXPLORER
+======================================== */
+
+.arduino-board-guide {
+  margin: 24px 0;
+}
+
+.arduino-image-stage {
+  position: relative;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  overflow: hidden;
+  border: 1px solid #dcecf8;
+  border-radius: 16px;
+  background: #ffffff;
+}
+
+.arduino-board-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  object-fit: contain;
+}
+
+.board-marker {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  place-items: center;
+  transform: translate(-50%, -50%);
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  background: #2587c5;
+  color: #ffffff;
+  font-size: 0.9rem;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 2px 9px rgba(14, 57, 85, 0.35);
+  transition: transform 0.18s, background 0.18s;
+}
+
+.board-marker:hover {
+  transform: translate(-50%, -50%) scale(1.12);
+}
+
+.board-marker.marker-active {
+  background: #f29c38;
+  color: #173c59;
+  outline: 3px solid rgba(242, 156, 56, 0.3);
+}
+
+.board-marker:focus-visible {
+  outline: 3px solid #173c59;
+  outline-offset: 3px;
+}
+
+.board-caption {
+  margin: 12px 0 18px;
+  color: #587084;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.board-detail {
+  margin-top: 18px;
+  padding: 20px;
+  border: 1px solid #cfe6f7;
+  border-radius: 14px;
+  background: #f1f8fd;
+}
+
+.board-detail-number {
+  color: #287bb5;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.board-detail h4 {
+  margin: 8px 0;
+  color: #173c59;
+  font-size: 1.15rem;
+}
+
+.board-detail p {
+  margin: 0;
+  color: #587084;
+  line-height: 1.7;
+}
+
+/* ========================================
+   PIN TYPES AND DIGITAL PIN EXPLORER
+======================================== */
+
+.pin-types {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin: 22px 0;
+}
+
+.pin-types > div {
+  padding: 18px;
+  border-radius: 14px;
+  background: #f1f8fd;
+}
+
+.pin-types strong {
+  color: #173c59;
+}
+
+.pin-types p {
+  margin-bottom: 0;
+  color: #587084;
+  line-height: 1.6;
+}
+
+.pin-explorer h4 {
+  margin: 24px 0 8px;
+  color: #173c59;
+  font-size: 1.05rem;
+}
+
+.digital-pin-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 20px 0;
+}
+
+.digital-pin {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid #dce8f1;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #294b63;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.digital-pin > span {
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.digital-pin small {
+  color: #71879a;
+  font-size: 0.7rem;
+}
+
+.digital-pin:hover,
+.digital-pin.pin-selected {
+  border-color: #2587c5;
+  background: #eaf6ff;
+}
+
+.digital-pin.pin-selected {
+  box-shadow: inset 0 0 0 1px #2587c5;
+}
+
+.digital-pin:focus-visible {
+  outline: 3px solid #80c8f5;
+  outline-offset: 2px;
+}
+
+.selected-pin-info {
+  padding: 18px;
+  border: 1px solid #d6eaf8;
+  border-radius: 14px;
+  background: #f5faff;
+}
+
+.selected-pin-info p {
+  margin-bottom: 0;
+  color: #496a82;
+  line-height: 1.7;
+}
+
+/* ========================================
+   CODE EXPLANATION
+======================================== */
+
+.code-explanation {
+  display: grid;
+  gap: 18px;
+  margin-top: 22px;
+}
+
+.code-explanation > div {
+  padding: 16px;
+  border-radius: 12px;
+  background: #f1f8fd;
+}
+
+.code-explanation code {
+  color: #176ca5;
+  font-size: 0.95rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+/* ========================================
+   VIRTUAL LED LAB
+======================================== */
+
+.led-lab {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.led-display,
+.led-controls {
+  padding: 28px;
+  border: 1px solid #dceaf5;
+  border-radius: 20px;
+  background: #ffffff;
+}
+
+.led-display {
+  display: flex;
+  min-height: 250px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(145deg, #f0f8ff, #ffffff);
+}
+
+.virtual-led {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.led-bulb {
+  width: 66px;
+  height: 66px;
+  border: 3px solid #b9c9d8;
+  border-radius: 50% 50% 44% 44%;
+  background: #dce5ed;
+  transition: background 0.3s, box-shadow 0.3s;
+}
+
+.led-base {
+  width: 32px;
+  height: 22px;
+  border-radius: 3px 3px 8px 8px;
+  background: #91a6b9;
+}
+
+.virtual-led.led-on .led-bulb {
+  border-color: #65c9f5;
+  background: #70d6ff;
+  box-shadow: 0 0 24px #70d6ff, 0 0 55px #70d6ff;
+}
+
+.led-status {
+  margin-top: 24px;
+  color: #60758a;
+}
+
+.led-status strong {
+  color: #1685c7;
+}
+
+.led-toggle-button {
+  margin-top: 12px;
+  padding: 12px 20px;
+  border: none;
+  border-radius: 10px;
+  background: #1685c7;
+  color: #ffffff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.2s;
+}
+
+.led-toggle-button:hover {
+  transform: translateY(-2px);
+  background: #106ba2;
+}
+
+.observation-question {
+  margin-top: 28px;
+  padding: 18px;
+  border-radius: 12px;
+  background: #edf7ff;
+  line-height: 1.6;
+}
+
+.observation-question p {
+  margin-bottom: 0;
+}
+
+/* ========================================
+   RESPONSIVE LAYOUT
+======================================== */
+
+@media (max-width: 700px) {
+  .concept-card,
+  .knowledge-check {
+    padding: 20px;
+  }
+
+  .led-facts {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 650px) {
+  .led-lab {
+    grid-template-columns: 1fr;
+  }
+
+  .led-lesson {
+    padding: 28px 16px;
+  }
+}
+
+@media (max-width: 500px) {
+  .pin-types {
+    grid-template-columns: 1fr;
+  }
+
+  .digital-pin-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .board-marker {
+    width: 28px;
+    height: 28px;
+    font-size: 0.78rem;
+  }
+}
