@@ -1,5 +1,6 @@
+
 import { useEffect, useRef, useState } from 'react';
-import { API_BASE_URL } from './api';
+import { compile as compileArduino } from '@horang-corp/avr-gcc-wasm';
 
 type ArduinoCompilePanelProps = {
   projectId: string;
@@ -19,134 +20,117 @@ type SavedResult = {
   result: CompileResponse;
 };
 
-const ENDPOINT = `${API_BASE_URL}/api/compile/arduino`;
-
 export default function ArduinoCompilePanel({
   projectId,
   code,
 }: ArduinoCompilePanelProps) {
   const [compiling, setCompiling] = useState(false);
-
-  const [result, setResult] =
-    useState<SavedResult | null>(null);
-
+  const [result, setResult] = useState<SavedResult | null>(null);
   const [error, setError] = useState('');
 
-  const requestRef =
-    useRef<AbortController | null>(null);
+  const busyRef = useRef(false);
+  const versionRef = useRef(0);
 
-  // Clear old results when the code or project changes.
+  // Clear previous results when the code or project changes.
   useEffect(() => {
-    requestRef.current?.abort();
-    requestRef.current = null;
-
-    setCompiling(false);
+    versionRef.current += 1;
     setResult(null);
     setError('');
 
     return () => {
-      requestRef.current?.abort();
+      versionRef.current += 1;
     };
   }, [projectId, code]);
 
   async function compile() {
-    if (compiling || requestRef.current) {
-      return;
-    }
+    if (busyRef.current) return;
 
     if (!code.trim()) {
-      setError(
-        'Enter some Arduino code before compiling.'
-      );
+      setError('Enter some Arduino code before compiling.');
       return;
     }
 
-    const controller = new AbortController();
-
-    requestRef.current = controller;
+    busyRef.current = true;
+    const version = versionRef.current;
 
     setCompiling(true);
     setResult(null);
     setError('');
 
     try {
-      const response = await fetch(ENDPOINT, {
-        method: 'POST',
+      // Arduino normally adds this header automatically.
+      const hasArduinoHeader =
+        /^\s*#\s*include\s*[<"]Arduino\.h[>"]/m.test(code);
 
-        headers: {
-          'Content-Type': 'application/json',
-        },
+      const source = hasArduinoHeader
+        ? code
+        : '#include <Arduino.h>\n' + code;
 
-        body: JSON.stringify({
-          code,
-        }),
-
-        signal: controller.signal,
+      // Compile on the learner's device, not on Render.
+      const compiled = await compileArduino({
+        source,
+        sensors: [],
+        assetsBase: new URL('/avr/', window.location.origin),
       });
 
-      const value: unknown = await response.json();
+      const hexGenerated =
+        typeof compiled.hex === 'string' &&
+        compiled.hex.length > 0;
 
-      if (
-        !value ||
-        typeof value !== 'object'
-      ) {
-        throw new Error(
-          'Invalid response from the compiler.'
-        );
-      }
+      const success = hexGenerated && compiled.fitsTarget;
 
-      const data = value as Partial<CompileResponse>;
+      const output = !hexGenerated
+        ? 'The compiler did not generate a HEX file.'
+        : !compiled.fitsTarget
+          ? 'Compilation generated a HEX file, but the program does not fit the target board.'
+          : [
+              'Compilation completed.',
+              'Board: Arduino Uno',
+              'Fits Arduino Uno flash: Yes',
+              'HEX generated: Yes',
+              `HEX length: ${compiled.hex.length} characters`,
+            ].join('\n');
 
-      if (!response.ok) {
-        throw new Error(
-          typeof data.error === 'string' &&
-            data.error
-            ? data.error
-            : 'The compilation request failed.'
-        );
-      }
-
-      if (
-        typeof data.success !== 'boolean' ||
-        typeof data.output !== 'string'
-      ) {
-        throw new Error(
-          'Invalid response from the compiler.'
-        );
-      }
-
-      if (!controller.signal.aborted) {
+      if (version === versionRef.current) {
         setResult({
           projectId,
           code,
-
           result: {
-            success: data.success,
-            board: data.board,
-            output: data.output,
-            error: data.error,
+            success,
+            board: 'Arduino Uno',
+            output,
           },
         });
       }
     } catch (caught) {
-      if (!controller.signal.aborted) {
-        setError(
-          caught instanceof Error &&
-            caught.message !== 'Failed to fetch'
-            ? caught.message
-            : 'Cannot connect to the compiler. Make sure the backend is running.'
-        );
+      const message =
+        caught instanceof Error
+          ? caught.message
+          : String(caught);
+
+      if (version === versionRef.current) {
+        if (/\berror:/i.test(message)) {
+          // Actual Arduino compilation error.
+          setResult({
+            projectId,
+            code,
+            result: {
+              success: false,
+              board: 'Arduino Uno',
+              output: message,
+            },
+          });
+        } else {
+          // Browser worker or compiler-loading failure.
+          setError(`Browser compiler failed: ${message}`);
+        }
       }
     } finally {
-      if (requestRef.current === controller) {
-        requestRef.current = null;
-        setCompiling(false);
-      }
+      busyRef.current = false;
+      setCompiling(false);
     }
   }
 
-  // Prevent results from another version of the code
-  // from being displayed.
   const currentResult =
     result?.projectId === projectId &&
     result.code === code
@@ -186,17 +170,10 @@ export default function ArduinoCompilePanel({
           type="button"
           className="cs-lab-primary"
           onClick={compile}
-          disabled={
-            compiling ||
-            !code.trim()
-          }
-          style={{
-            minWidth: 112,
-          }}
+          disabled={compiling || !code.trim()}
+          style={{ minWidth: 112 }}
         >
-          {compiling
-            ? 'Compiling…'
-            : '⚙ Compile'}
+          {compiling ? 'Compiling…' : '⚙ Compile'}
         </button>
       </div>
 
@@ -209,7 +186,6 @@ export default function ArduinoCompilePanel({
             marginTop: 12,
             padding: 13,
             borderRadius: 10,
-
             border: `1px solid ${
               currentResult
                 ? currentResult.success
@@ -217,16 +193,11 @@ export default function ArduinoCompilePanel({
                   : '#ecc1c1'
                 : '#d7e5ed'
             }`,
-
             background: '#f8fbfd',
             color: '#183447',
           }}
         >
-          <strong
-            style={{
-              fontSize: 14,
-            }}
-          >
+          <strong style={{ fontSize: 14 }}>
             {compiling
               ? 'Compiling your sketch…'
               : error
@@ -236,7 +207,6 @@ export default function ArduinoCompilePanel({
                   : '✕ Compilation failed'}
           </strong>
 
-          {/* CONNECTION OR SERVER ERROR */}
           {error && (
             <p
               style={{
@@ -248,7 +218,6 @@ export default function ArduinoCompilePanel({
             </p>
           )}
 
-          {/* ACTUAL ARDUINO COMPILER OUTPUT */}
           {currentResult && !compiling && (
             <>
               <p
@@ -257,8 +226,7 @@ export default function ArduinoCompilePanel({
                   color: '#617789',
                 }}
               >
-                {currentResult.board ??
-                  'Arduino Uno'}{' '}
+                {currentResult.board ?? 'Arduino Uno'}{' '}
                 · Compiler output
               </p>
 
@@ -277,19 +245,14 @@ export default function ArduinoCompilePanel({
                 style={{
                   padding: 12,
                   borderRadius: 8,
-
                   background: '#eef5f9',
                   color: '#183447',
-
                   font:
                     '12px/1.65 Consolas, Monaco, monospace',
-
                   maxHeight: 270,
                   overflow: 'auto',
-
                   whiteSpace: 'pre-wrap',
                   overflowWrap: 'anywhere',
-
                   margin: 0,
                   textAlign: 'left',
                 }}

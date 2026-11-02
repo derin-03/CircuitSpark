@@ -7,6 +7,7 @@ import { python } from '@codemirror/lang-python';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { API_BASE_URL } from './api';
+import { preprocessArduino } from './arduinoPreprocess';
 
 type Language = 'arduino' | 'python';
 type TutorView = 'welcome' | 'conversation';
@@ -40,6 +41,7 @@ type ExecutionResult = {
   output: string;
   error: string | null;
   target: string;
+  rawOutput?: string;
 };
 
 const PROJECTS_KEY = 'circuitspark-codelab-projects';
@@ -50,8 +52,6 @@ const TUTOR_CHATS_KEY =
   'circuitspark-codelab-tutor-chats';
 
 const CHAT_ENDPOINT = `${API_BASE_URL}/api/chat`;
-const COMPILE_ENDPOINT =
-  `${API_BASE_URL}/api/compile/arduino`;
 const PYTHON_ENDPOINT =
   `${API_BASE_URL}/api/run/python`;
 
@@ -248,6 +248,27 @@ function removeAnsiColors(value: string): string {
   return value.replace(/\x1b\[[0-9;]*m/g, '');
 }
 
+// Extract useful Arduino compiler diagnostics without hiding technical details.
+function summarizeArduinoError(message: string): string {
+  const lines = message.split('\n');
+  const errors = lines
+    .filter((line) => /\[cc1plus\].*\berror:/i.test(line))
+    .map((line) => line.replace(/^\[cc1plus\]\s*/, '').replace(/^.*?:\d+:\d+:\s*error:\s*/, '').trim());
+  const suggestions = lines
+    .filter((line) => /\[cc1plus\].*note: suggested alternative:/i.test(line))
+    .map((line) => line.replace(/^.*?note: suggested alternative:\s*/, '').trim());
+
+  if (!errors.length) return message;
+  const uniqueErrors = [...new Set(errors)];
+  return [
+    'What went wrong:',
+    ...uniqueErrors.map((error) => `• ${error}`),
+    ...(suggestions.length
+      ? ['', `Compiler suggestion: ${suggestions[0]}`]
+      : []),
+  ].join('\n');
+}
+
 export default function CodeLab() {
   const [workspace, setWorkspace] =
     useState<Workspace>(loadWorkspace);
@@ -304,8 +325,10 @@ export default function CodeLab() {
     useState<ExecutionResult | null>(null);
   const [compileError, setCompileError] = useState('');
 
+  // AbortController invalidates obsolete results. It cannot stop WASM work.
   const compileRequestRef =
     useRef<AbortController | null>(null);
+  const compileBusyRef = useRef(false);
 
   // Python execution state
   const [runningPython, setRunningPython] =
@@ -441,105 +464,92 @@ export default function CodeLab() {
     setPythonError('');
   }
 
-  // Compile Arduino code.
+  // Compile Arduino code locally in the browser (no backend execution).
   async function compileArduino() {
-    if (
-      !project ||
-      project.language !== 'arduino' ||
-      compiling ||
-      compileRequestRef.current
-    ) {
+    if (!project || project.language !== 'arduino') return;
+
+    if (compileBusyRef.current) {
+      setCompileError('Please wait for the previous compilation to finish.');
       return;
     }
 
     if (!project.code.trim()) {
-      setCompileError(
-        'Write some Arduino code before compiling.'
-      );
+      setCompileError('Write some Arduino code before compiling.');
       setCompilation(null);
       return;
     }
 
     const projectId = project.id;
     const codeSnapshot = project.code;
-
     const controller = new AbortController();
-    compileRequestRef.current = controller;
 
+    compileRequestRef.current = controller;
+    compileBusyRef.current = true;
     setCompiling(true);
     setCompilation(null);
     setCompileError('');
 
     try {
-      const response = await fetch(COMPILE_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          code: codeSnapshot,
-        }),
-        signal: controller.signal,
+      // Load the compiler only when the Arduino Compile button is clicked.
+      const { compile } = await import('@horang-corp/avr-gcc-wasm');
+
+      // Prepare Arduino sketches before compiling in the browser.
+      const source = preprocessArduino(codeSnapshot);
+
+      const built = await compile({
+        source,
+        sensors: [],
+        assetsBase: new URL('/avr/', window.location.origin),
       });
 
-      const result: unknown = await response.json();
+      const hexGenerated =
+        typeof built.hex === 'string' && built.hex.length > 0;
+      const success = hexGenerated && built.fitsTarget === true;
+      const output = !hexGenerated
+        ? 'The compiler did not generate a HEX file.'
+        : !built.fitsTarget
+          ? 'HEX generated, but the program does not fit Arduino Uno flash.'
+          : [
+              'Compilation completed.',
+              'Fits Arduino Uno flash: Yes',
+              'HEX generated: Yes',
+              `HEX length: ${built.hex.length} characters`,
+            ].join('\n');
 
-      if (!result || typeof result !== 'object') {
-        throw new Error(
-          'CircuitSpark received an invalid compiler response.'
-        );
-      }
-
-      const data = result as {
-        success?: unknown;
-        board?: unknown;
-        output?: unknown;
-        error?: unknown;
-      };
-
-      if (!response.ok) {
-        throw new Error(
-          typeof data.error === 'string' && data.error
-            ? data.error
-            : 'The compilation request could not be completed.'
-        );
-      }
-
-      if (
-        typeof data.success !== 'boolean' ||
-        typeof data.output !== 'string'
-      ) {
-        throw new Error(
-          'CircuitSpark received an invalid compiler response.'
-        );
-      }
-
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted &&
+          compileRequestRef.current === controller) {
         setCompilation({
           projectId,
           codeSnapshot,
-          success: data.success,
-          target:
-            typeof data.board === 'string'
-              ? data.board
-              : 'Arduino Uno',
-          output: removeAnsiColors(data.output),
-          error:
-            typeof data.error === 'string'
-              ? data.error
-              : null,
+          success,
+          target: 'Arduino Uno',
+          output,
+          error: null,
         });
       }
-    } catch (error) {
-      if (!controller.signal.aborted) {
-        setCompileError(
-          error instanceof Error &&
-            error.message !== 'Failed to fetch'
-            ? error.message
-            : 'Could not connect to the compiler. Check that the backend is running.'
-        );
+    } catch (caught) {
+      const message = removeAnsiColors(
+        caught instanceof Error ? caught.message : String(caught)
+      );
+
+      if (!controller.signal.aborted &&
+          compileRequestRef.current === controller) {
+        if (/\berror:/i.test(message)) {
+          setCompilation({
+            projectId,
+            codeSnapshot,
+            success: false,
+            target: 'Arduino Uno',
+            output: summarizeArduinoError(message),
+            rawOutput: message,
+            error: null,
+          });
+        } else {
+          setCompileError(`Browser compiler failed: ${message}`);
+        }
       }
     } finally {
+      compileBusyRef.current = false;
       if (compileRequestRef.current === controller) {
         compileRequestRef.current = null;
         setCompiling(false);
@@ -2075,23 +2085,31 @@ export default function CodeLab() {
                           fontSize: 12,
                         }}
                       >
-                        Target board: Arduino Uno · Compilation
-                        only, no hardware execution
+                        {import.meta.env.DEV
+                          ? 'Target board: Arduino Uno · Compilation only, no hardware execution'
+                          : 'Write and save Arduino sketches while the compiler is being prepared.'}
                       </span>
 
-                      <button
-                        type="button"
-                        className="cs-lab-primary"
-                        onClick={compileArduino}
-                        disabled={
-                          compiling ||
-                          !project.code.trim()
-                        }
-                      >
-                        {compiling
-                          ? 'Compiling…'
-                          : '⚙ Compile'}
-                      </button>
+                      {import.meta.env.DEV ? (
+                        <button
+                          type="button"
+                          className="cs-lab-primary"
+                          onClick={compileArduino}
+                          disabled={compiling || !project.code.trim()}
+                        >
+                          {compiling ? 'Compiling…' : '⚙ Compile'}
+                        </button>
+                      ) : (
+                        <span
+                          style={{
+                            color: '#19678e',
+                            fontSize: 13,
+                            fontWeight: 700,
+                          }}
+                        >
+                          ⚙ Arduino Compiler — Coming Soon
+                        </span>
+                      )}
                     </div>
 
                     {(compiling ||
@@ -2189,6 +2207,17 @@ export default function CodeLab() {
                                   ? 'Compilation completed.'
                                   : 'Compilation failed without additional output.')}
                             </pre>
+                            {currentCompilation.rawOutput &&
+                              currentCompilation.rawOutput !== currentCompilation.output && (
+                                <details style={{ marginTop: 10 }}>
+                                  <summary style={{ cursor: 'pointer', fontSize: 12 }}>
+                                    Show full compiler output
+                                  </summary>
+                                  <pre className="cs-lab-compile-output">
+                                    {currentCompilation.rawOutput}
+                                  </pre>
+                                </details>
+                              )}
                           </>
                         )}
                       </div>
@@ -2776,8 +2805,7 @@ export default function CodeLab() {
         }}
       >
         Projects are saved automatically in this browser.
-        Arduino compilation and local Python execution
-        are available.
+        Code execution features are under development.
       </p>
 
       {/* NEW PROJECT FORM */}
