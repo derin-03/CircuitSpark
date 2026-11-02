@@ -4,9 +4,12 @@
 
 **An AI learning companion for people who want to understand electronics and embedded systems—not just copy code or follow a circuit diagram.**
 
+**[🌐 Open CircuitSpark — Live App](https://circuitspark.pages.dev)** · 
+**[💻 View Source on GitHub](https://github.com/derin-03/CircuitSpark)**
+
 CircuitSpark combines a conversational AI tutor with a practical coding workspace. It is intended to help curious learners, including people without physical electronics equipment, ask questions, understand why things work, and practise their skills.
 
-> **Status:** Active prototype built during Hacktoberfest 2026. Some Code Lab features are experimental. A verified live demo URL has not yet been added.
+> **Status:** Active prototype built during Hacktoberfest 2026. Try the [live web application](https://circuitspark.pages.dev). Some Code Lab features are experimental.
 
 ## The problem
 
